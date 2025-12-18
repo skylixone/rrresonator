@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Chladni Plate Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            overflow: hidden;
+        }
+
+        #canvas {
+            border: 1px solid #333;
+            touch-action: none;
+            max-width: 100vw;
+            max-height: calc(100vh - 80px);
+        }
+
+        #resetBtn {
+            margin-top: 20px;
+            padding: 12px 32px;
+            font-size: 16px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #resetBtn:active {
+            background: #ddd;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <button id="resetBtn">Reset</button>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Set canvas size
+        const size = Math.min(window.innerWidth - 40, window.innerHeight - 120, 600);
+        canvas.width = size;
+        canvas.height = size;
+
+        // Configuration
+        const GRAIN_COUNT = 2000;
+        const GRAIN_SIZE = 1.5;
+        const SPEED = 0.8;
+
+        // Chladni pattern parameters (modes)
+        let m = 3; // horizontal mode
+        let n = 4; // vertical mode
+
+        class Grain {
+            constructor() {
+                this.randomize();
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            randomize() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            // Calculate Chladni pattern amplitude at position
+            getAmplitude(x, y) {
+                const nx = x / canvas.width * Math.PI;
+                const ny = y / canvas.height * Math.PI;
+
+                // Chladni pattern: combination of sine waves
+                const pattern = Math.sin(m * nx) * Math.sin(n * ny) +
+                               Math.sin(n * nx) * Math.sin(m * ny);
+
+                return Math.abs(pattern);
+            }
+
+            update() {
+                // Sample surrounding area to find direction to nodal line
+                const sampleDist = 3;
+                const amp = this.getAmplitude(this.x, this.y);
+                const ampRight = this.getAmplitude(this.x + sampleDist, this.y);
+                const ampLeft = this.getAmplitude(this.x - sampleDist, this.y);
+                const ampDown = this.getAmplitude(this.x, this.y + sampleDist);
+                const ampUp = this.getAmplitude(this.x, this.y - sampleDist);
+
+                // Move away from high amplitude (toward nodal lines)
+                const forceX = (ampLeft - ampRight) * SPEED;
+                const forceY = (ampUp - ampDown) * SPEED;
+
+                this.vx += forceX;
+                this.vy += forceY;
+
+                // Damping
+                this.vx *= 0.85;
+                this.vy *= 0.85;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Boundary conditions - bounce off edges
+                if (this.x < 0) {
+                    this.x = 0;
+                    this.vx = 0;
+                } else if (this.x > canvas.width) {
+                    this.x = canvas.width;
+                    this.vx = 0;
+                }
+
+                if (this.y < 0) {
+                    this.y = 0;
+                    this.vy = 0;
+                } else if (this.y > canvas.height) {
+                    this.y = canvas.height;
+                    this.vy = 0;
+                }
+            }
+
+            draw() {
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, GRAIN_SIZE, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Create grains
+        let grains = [];
+
+        function initGrains() {
+            grains = [];
+            for (let i = 0; i < GRAIN_COUNT; i++) {
+                grains.push(new Grain());
+            }
+        }
+
+        function animate() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw grains
+            grains.forEach(grain => {
+                grain.update();
+                grain.draw();
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // Reset button handler
+        resetBtn.addEventListener('click', () => {
+            // Randomize mode numbers for variety
+            m = Math.floor(Math.random() * 4) + 2; // 2-5
+            n = Math.floor(Math.random() * 4) + 2; // 2-5
+
+            grains.forEach(grain => grain.randomize());
+        });
+
+        // Initialize and start
+        initGrains();
+        animate();
+    </script>
+</body>
+</html>
