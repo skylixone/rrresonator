@@ -30,8 +30,13 @@
             max-height: calc(100vh - 80px);
         }
 
-        #resetBtn {
+        .controls {
             margin-top: 20px;
+            display: flex;
+            gap: 12px;
+        }
+
+        button {
             padding: 12px 32px;
             font-size: 16px;
             background: #fff;
@@ -43,19 +48,32 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        #resetBtn:active {
+        button:active {
             background: #ddd;
+        }
+
+        button.active {
+            background: #4CAF50;
+            color: #fff;
+        }
+
+        button.active:active {
+            background: #45a049;
         }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
-    <button id="resetBtn">Reset</button>
+    <div class="controls">
+        <button id="resetBtn">Reset</button>
+        <button id="micBtn">Enable Mic</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const resetBtn = document.getElementById('resetBtn');
+        const micBtn = document.getElementById('micBtn');
 
         // Set canvas size
         const size = Math.min(window.innerWidth - 40, window.innerHeight - 120, 600);
@@ -70,6 +88,12 @@
         // Chladni pattern parameters (modes)
         let m = 3; // horizontal mode
         let n = 4; // vertical mode
+
+        // Audio setup
+        let audioContext = null;
+        let analyser = null;
+        let dataArray = null;
+        let micActive = false;
 
         class Grain {
             constructor() {
@@ -157,10 +181,46 @@
             }
         }
 
+        // Process audio and update modes
+        function updateModesFromAudio() {
+            if (!micActive || !analyser) return;
+
+            analyser.getByteFrequencyData(dataArray);
+
+            // Find dominant frequencies
+            let maxVal = 0;
+            let maxIdx = 0;
+            let secondMaxVal = 0;
+            let secondMaxIdx = 0;
+
+            for (let i = 5; i < dataArray.length / 4; i++) {
+                if (dataArray[i] > maxVal) {
+                    secondMaxVal = maxVal;
+                    secondMaxIdx = maxIdx;
+                    maxVal = dataArray[i];
+                    maxIdx = i;
+                } else if (dataArray[i] > secondMaxVal) {
+                    secondMaxVal = dataArray[i];
+                    secondMaxIdx = i;
+                }
+            }
+
+            // Map frequency indices to mode numbers (2-7 range)
+            if (maxVal > 30) { // Threshold to filter noise
+                m = Math.floor((maxIdx / dataArray.length) * 30) + 2;
+                n = Math.floor((secondMaxIdx / dataArray.length) * 30) + 2;
+                m = Math.min(Math.max(m, 2), 7);
+                n = Math.min(Math.max(n, 2), 7);
+            }
+        }
+
         function animate() {
             // Clear canvas
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update modes from audio if mic is active
+            updateModesFromAudio();
 
             // Update and draw grains
             grains.forEach(grain => {
@@ -178,6 +238,43 @@
             n = Math.floor(Math.random() * 4) + 2; // 2-5
 
             grains.forEach(grain => grain.randomize());
+        });
+
+        // Microphone button handler
+        micBtn.addEventListener('click', async () => {
+            if (!micActive) {
+                try {
+                    // Request microphone access
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                    // Set up Web Audio API
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 256;
+
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+
+                    const source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+
+                    micActive = true;
+                    micBtn.textContent = 'Disable Mic';
+                    micBtn.classList.add('active');
+                } catch (err) {
+                    console.error('Microphone access denied:', err);
+                    alert('Microphone access denied. Please allow microphone access to use this feature.');
+                }
+            } else {
+                // Disable mic
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+                micActive = false;
+                micBtn.textContent = 'Enable Mic';
+                micBtn.classList.remove('active');
+            }
         });
 
         // Initialize and start
